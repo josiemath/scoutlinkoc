@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ScoutLink OC">
-  <circle cx="32" cy="32" r="31" fill="#1D4A36"/>
-  <circle cx="32" cy="32" r="26.5" fill="none" stroke="#F2F5EF" stroke-width="2" stroke-dasharray="3.4 3.1" stroke-linecap="round"/>
-  <path d="M19 41 C 23 29, 30 45, 33.5 32 S 42 22, 45 23" fill="none" stroke="#F2F5EF" stroke-width="2.6" stroke-linecap="round"/>
-  <circle cx="19" cy="41" r="4.3" fill="#F2F5EF"/>
-  <circle cx="33.5" cy="32" r="4.3" fill="#F2F5EF"/>
-  <circle cx="45" cy="23" r="5.2" fill="#F0952A"/>
-</svg>
