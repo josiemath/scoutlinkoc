@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Redirecting | ScoutLink OC</title>
+    <script>
+      (function () {
+        var base = "/scoutlinkoc/";
+        var loc = window.location;
+        var path = loc.pathname.indexOf(base) === 0 ? loc.pathname.slice(base.length) : loc.pathname.replace(/^\/+/, "");
+        path = path.replace(/\/+$/, "").replace(/^index\.html$/, "");
+        loc.replace(base + "#/" + path + loc.search);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to ScoutLink OC. If nothing happens, <a href="/scoutlinkoc/">open the home page</a>.</p>
+  </body>
+</html>
