@@ -32,7 +32,7 @@ Changes in the demo are saved in the browser's local storage only. Use **Setting
 
 1. Sign in to GitHub and create a **new public repository** (for example `scoutlink-oc`). Don't add a README; this one is included.
 2. On the new repo's page, click **uploading an existing file** (or **Add file → Upload files**).
-3. Unzip `scoutlink-oc.zip`, open the folder, select **everything inside it** (`index.html`, `app.html`, `404.html`, `README.md`, `.nojekyll` and the `assets` folder) and drag it into the upload area. Drag the contents, not the outer folder, so `index.html` ends up at the top level of the repo.
+3. Unzip `scoutlink-oc.zip`, open the folder, select **all 13 files inside it** and drag them into the upload area. Drag the files, not the outer folder, so `index.html` ends up at the top level of the repo.
 4. Click **Commit changes**.
 5. Go to **Settings → Pages**. Under **Build and deployment**, set **Source** to **Deploy from a branch**, pick **main** and **/ (root)**, then click **Save**.
 6. Wait a minute or two, then refresh the Pages settings. Your site will be at
@@ -69,29 +69,27 @@ python3 -m http.server 8000
 
 ```
 scoutlink-oc/
-├── index.html          Overview and pitch page
-├── app.html            Interactive demo
-├── 404.html            Not-found page
+├── index.html      Overview and pitch page
+├── app.html        Interactive demo
+├── 404.html        Not-found page
+├── base.css        Colors, type, buttons, patches, forms, tables
+├── landing.css     Overview page layout
+├── app.css         Demo app layout
+├── data.js         All sample data (troops, events, projects, messages, roles)
+├── landing.js      Troop map and pilot decisions
+├── app.js          Demo app: routing, roles, views, actions
+├── logo.svg
+├── favicon.svg
 ├── README.md
-├── .nojekyll
-└── assets/
-    ├── css/
-    │   ├── base.css     Colors, type, buttons, patches, forms, tables
-    │   ├── landing.css  Overview page layout
-    │   └── app.css      Demo app layout
-    ├── js/
-    │   ├── data.js      All sample data (troops, events, projects, messages, roles)
-    │   ├── landing.js   Troop map and pilot decisions
-    │   └── app.js       Demo app: routing, roles, views, actions
-    └── img/
-        ├── logo.svg
-        └── favicon.svg
+└── .nojekyll
 ```
+
+Every file sits at the top level, with no subfolders, so uploading through GitHub's website can't break the paths.
 
 ## Customizing
 
-- **Sample data**: edit `assets/js/data.js`. Event and task dates are stored as "days from today" (`offset: 9` means nine days from now), so the demo never looks out of date.
-- **Colors and fonts**: the variables at the top of `assets/css/base.css`. Each Girl Scout level has its own color, used for troop patches and level tags.
+- **Sample data**: edit `data.js`. Event and task dates are stored as "days from today" (`offset: 9` means nine days from now), so the demo never looks out of date.
+- **Colors and fonts**: the variables at the top of `base.css`. Each Girl Scout level has its own color, used for troop patches and level tags.
 - **Your name or contact info**: add it to the footer in `index.html`.
 - **Map positions**: each troop's `map: [x, y]` in `data.js` places its patch on the overview map.
 
