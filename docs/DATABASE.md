@@ -1,6 +1,6 @@
 # Database design
 
-> **Status:** design for review. No migrations exist yet; they arrive in Milestone 2 (identity) and later milestones (one migration set per feature area). Table and column names below are the plan the migrations will follow.
+> **Status:** the identity, verification, audit and contact tables are **built and tested** (Milestone 2, `supabase/migrations/`). Networking, events, projects and moderation tables below are the plan for Milestones 3–7 and may change when they're built.
 
 PostgreSQL on Supabase. All primary keys are `uuid` (`gen_random_uuid()`), all timestamps are `timestamptz`, and every table exposed through the API has Row Level Security enabled with default-deny policies.
 
@@ -65,20 +65,25 @@ erDiagram
 
 ## Tables
 
-### Identity and organizations
+### Identity and organizations (built in Milestone 2)
 
-| Table | Key columns | Notes |
+| Table | Columns | Rules |
 | --- | --- | --- |
-| `profiles` | `id` (= `auth.users.id`), `display_name`, `bio`, `interests text[]`, `general_location`, `account_state` (`pending_verification`, `active`, `suspended`, `deactivated`), `notification_prefs jsonb`, `privacy_prefs jsonb`, `deletion_requested_at` | Created by trigger on sign-up. Users may update only display/bio/interests/location/preferences (column-level grants). `account_state` changes only through admin RPCs. |
-| `role_assignments` | `profile_id`, `role` (`platform_admin`, `council_admin`, `service_unit_coordinator`, `troop_leader`, `adult_volunteer`, `girl_member`, `guardian`), `scope_type` (`platform`, `council`, `service_unit`, `troop`), `scope_id`, `granted_by`, `granted_at`, `revoked_at` | Source of truth for permissions. Multiple scoped roles per person. Unique on (`profile_id`, `role`, `scope_type`, `scope_id`) where not revoked. No insert/update policy for users; written only by `grant_role` / `revoke_role` functions. |
-| `service_units` | `name`, `number`, `region` (`north`, `central`, `south`, `coastal`, …), `description`, `founded_year`, `founded_year_source`, `visibility`, `archived_at`, `is_demo` | |
-| `troops` | `number`, `service_unit_id`, `introduction`, `approx_size`, `size_source`, `size_as_of`, `founded_year`, `collaboration_status` (`open`, `limited`, `closed`), `visibility` (`council_members`, `public_listing`), `archived_at`, `is_demo` | Levels and interests in child tables. Private details (meeting place, schedule) live in `troop_private_details`, readable only by that troop's verified adults. |
-| `troop_levels` | `troop_id`, `level` (`daisy` … `ambassador`) | A service unit's levels are derived from its troops, never stored on the service unit. |
-| `troop_interests` | `troop_id`, `interest_id` → `interest_tags` | |
-| `troop_affiliations` / `service_unit_affiliations` | `profile_id`, scope id, `status` (`requested`, `approved`, `rejected`, `ended`), `approved_by`, timestamps | A request at onboarding creates `requested`; only admins approve. |
-| `verification_requests` | `profile_id`, `requested_role`, `requested_scope`, `notes`, `status`, `reviewed_by`, `reviewed_at` | Drives the admin verification queue. |
-| `guardian_relationships` | `guardian_id`, `member_id`, `status`, `verified_by` | **Future, gated.** Created but unusable (no policies grant access) until youth access is approved. |
-| `user_consents` | `profile_id`, `consent_type`, `version`, `granted_at`, `withdrawn_at`, `evidence_ref` | **Future, gated.** Records policy agreements now; youth/guardian consent types stay disabled. |
+| `profiles` | `id` (= `auth.users.id`), `display_name`, `bio`, `interests text[]` (≤12, each ≤40 chars), `general_location`, `account_state` (`pending_verification`, `active`, `suspended`, `deactivated`), `state_reason`, `deletion_requested_at`, `deletion_reason` | Created by a trigger on sign-up, always `pending_verification`. Users can read only their own row and update only `display_name`, `bio`, `interests`, `general_location` (column grants), and only while pending or active. State changes only through functions. |
+| `role_assignments` | `profile_id`, `role` (`platform_admin`, `council_admin`, `service_unit_coordinator`, `troop_leader`, `adult_volunteer`, `girl_member`, `guardian`), `scope_type` (`platform`, `council`, `service_unit`, `troop`), `scope_id`, `granted_by`, `granted_at`, `revoked_at`, `revoked_by` | Source of truth for permissions. A check constraint ties each role to its scope type; a partial unique index allows one active copy. No write grants at all: only `admin_*` functions write it. |
+| `service_units` | `name`, `code`, `region` (`north`, `central`, `south`, `coastal`, `west`), `description`, `founded_year` + `founded_year_source`, `visibility` (`council_members`, `public_listing`, `hidden`), `is_demo`, `archived_at` | Readable by active members (not hidden or archived) and admins. |
+| `troops` | `number`, `service_unit_id`, `introduction`, `approx_size` + `size_source` + `size_as_of`, `founded_year` + `founded_year_source`, `collaboration_status` (`open`, `limited`, `closed`), `visibility`, `is_demo`, `archived_at` | Same read rule. Check constraints require a source for every size or founding year. |
+| `troop_levels` | `troop_id`, `level` (`daisy` … `ambassador`) | Readable when the troop is. A service unit's levels are derived from its troops. |
+| `verification_requests` | `profile_id`, `requested_role`, `service_unit_id`, `troop_id`, `note`, `status` (`pending`, `approved`, `rejected`, `withdrawn`), `decided_by`, `decided_at`, `decision_note` | One pending request per person (partial unique index). Users read their own; admins read all. Written only by functions. |
+| `troop_affiliations`, `service_unit_affiliations` | `profile_id`, scope id, `status` (`requested`, `approved`, `rejected`, `ended`), `verification_request_id`, `decided_by`, `decided_at` | Created as `requested` by onboarding; approved or ended with the request. |
+| `user_consents` | `profile_id`, `consent_type` (only `terms_and_privacy` for now), `policy_version`, `granted_at`, `withdrawn_at` | Recorded by onboarding against `private.settings.policy_version`. Youth and guardian consent types aren't allowed by the check constraint. |
+| `guardian_relationships` | `guardian_id`, `member_id`, `status`, `verified_by` | **Gated.** All privileges revoked and no policies, so nothing can read or write it until youth access is approved. |
+| `contact_messages` | `name`, `email`, `topic`, `message`, `handled_at`, `handled_by` | Written only by `submit_contact_message` (validation, honeypot, rate limits). Readable by admins. |
+| `audit_logs` | `actor_id`, `action`, `target_type`, `target_id`, `metadata jsonb`, `created_at` | Append-only, written by `private.audit()`. Readable by admins; never stores passwords, tokens or message bodies. |
+| `private.settings` | `key`, `value jsonb` | Not exposed through the API. `youth_access_enabled` (false) and `policy_version`. |
+| `private.rate_limits` | `bucket`, `window_start`, `count` | Counters for `private.check_rate_limit()`. |
+
+Planned for Milestone 3: `troop_interests`/`interest_tags`, `troop_private_details` (meeting place and schedule, visible only to that troop's verified adults).
 
 ### Networking
 
@@ -126,28 +131,48 @@ erDiagram
 | `opportunity_requests` | Interest/requests to an opportunity; contact flows through the platform. |
 | `notifications` | `recipient_id`, `type`, `resource_type`, `resource_id`, `title`, `read_at`. Inserted only by triggers/RPCs; users can only mark their own as read. |
 | `content_reports` | `reporter_id`, `target_type`, `target_id`, `reason`, `status` (`open`, `in_review`, `resolved`, `escalated`), `assigned_to`, `resolution`. |
-| `audit_logs` | `actor_id`, `action`, `target_type`, `target_id`, `scope`, `metadata jsonb`, `created_at`. Append-only (no update/delete grants). Never stores passwords, tokens or message bodies. |
-| `contact_messages` | Public contact form (Milestone 2): insert-only for `anon` through a rate-limited Edge Function; readable by platform admins. |
 | `rate_limits` | Auxiliary counters used by RPCs and Edge Functions. |
 
 ## Authorization model
 
-Helper functions live in a `private` schema that isn't exposed through the API, are `security definer` with a fixed `search_path`, and read only `auth.uid()` plus `role_assignments`:
+Helper functions live in a `private` schema that PostgREST doesn't expose. They're `security definer` with `search_path = ''` and read only `auth.uid()`, `profiles.account_state` and `role_assignments`:
 
-- `private.is_active()`: caller's `account_state = 'active'`.
-- `private.has_role(role, scope_type, scope_id)`: an unrevoked assignment matches (council admins match all council scopes).
-- `private.is_troop_leader(troop_id)`, `private.coordinates_service_unit(service_unit_id)`, `private.is_project_member(project_id)`, `private.is_conversation_participant(conversation_id)`.
+- `private.current_account_state()`, `private.is_active()`
+- `private.has_role(role)`, `private.has_scoped_role(role, scope_type, scope_id)`: active accounts with an unrevoked assignment
+- `private.is_platform_admin()`, `private.is_admin()` (platform or council admin)
+- `private.audit(action, target_type, target_id, metadata)`, `private.check_rate_limit(bucket, max, window)`
+- `private.grant_role_checked(...)`: the only code path that inserts into `role_assignments`
 
-Policies call these helpers, for example:
+Policies call them with `(select …)` so Postgres evaluates them once per query:
 
 ```sql
--- Only verified participants can read messages; guessing a conversation id returns nothing.
-create policy "participants read messages" on public.messages
+create policy "verified members read visible troops" on public.troops
   for select to authenticated
-  using (private.is_active() and private.is_conversation_participant(conversation_id));
+  using (((select private.is_active()) and archived_at is null and visibility <> 'hidden') or (select private.is_admin()));
 ```
 
-Directory reads go through `security invoker` views (or RLS-protected tables) that expose only shareable columns, so a view can never bypass RLS. Aggregate counts come from approved aggregate tables or functions that return counts without row data.
+Supabase grants every API role broad default privileges on new tables. The migrations revoke them and grant back only what each policy needs, so a missing policy can never fall back to "allowed".
+
+### Functions the app calls (Milestone 2)
+
+All are `security definer`, re-check the caller, and raise short error codes (`forbidden`, `request_pending`, …) that the app turns into plain-language messages (`src/lib/errors.ts`).
+
+| Function | Who | What it does |
+| --- | --- | --- |
+| `get_my_account()` | signed in | Own profile, account state, active roles with scope names, latest verification request, current policy version |
+| `list_affiliation_options()` | signed in | Service units and troops a person can choose during onboarding (never hidden ones) |
+| `submit_onboarding(...)` | pending or active | Saves display name and interests, records policy consent, creates a verification request and requested affiliations. Only troop leader, adult volunteer and service unit coordinator can be requested; 5 per day |
+| `withdraw_my_verification_request()` | owner | Withdraws a pending request and ends its requested affiliations |
+| `deactivate_my_account(reason)` | pending or active | Deactivates; a suspended account can't use this to clear its suspension |
+| `request_my_account_deletion(reason)` | signed in | Records the request and deactivates (a suspension stays in place) |
+| `admin_list_verification_requests(status)` | admin | The queue, with name and email for checking records |
+| `admin_decide_verification(id, approve, note)` | admin | Approves (grants exactly the requested role and scope, activates the account) or rejects (reason required). Nobody can decide their own request |
+| `admin_grant_role`, `admin_revoke_role` | admin | Council admins grant non-admin roles; only platform admins grant admin roles; nobody changes their own; youth roles blocked while youth access is off |
+| `admin_set_account_state(id, state, reason)` | admin | Activate, suspend or deactivate with a reason; not yourself; council admins can't change platform admins |
+| `submit_contact_message(...)` | anyone | Validates, drops honeypot submissions silently, rate-limits per email (3/hour), per network address (10/hour) and overall (200/hour) |
+| `private.bootstrap_platform_admin(email)` | SQL editor only | Makes the first platform administrator. Refuses once one exists; not callable through the API |
+
+Every state change writes an `audit_logs` row.
 
 ## Indexes (initial set)
 
@@ -156,6 +181,20 @@ Directory reads go through `security invoker` views (or RLS-protected tables) th
 - Calendars: `events(starts_at)` partial on `state = 'published'`.
 - Partial unique indexes for "one pending request per pair" and "one active registration per participant".
 
-## Migrations
+## Migrations and tests
 
-`supabase/migrations/<timestamp>_<name>.sql`, applied with `npx supabase db push`. Each migration ships with SQL tests (pgTAP via `supabase test db`) that prove unauthorized reads and writes are rejected. Type definitions are generated into `src/types/database.ts` with `npx supabase gen types`.
+| File | Contents |
+| --- | --- |
+| `supabase/migrations/20261111000100_foundation.sql` | `private` schema, enums, settings, rate limits, audit log |
+| `supabase/migrations/20261111000200_identity.sql` | Identity and organization tables, triggers, helper functions, RLS policies and grants |
+| `supabase/migrations/20261111000300_identity_functions.sql` | The functions listed above |
+| `supabase/setup.sql` | All migrations in one file for pasting into the SQL editor. Generated by `npm run db:bundle`; a unit test fails if it's out of date |
+| `supabase/seed.sql` | Fictional demo service units and troops (`is_demo = true`, names marked "fictional demo") |
+| `supabase/scripts/remove-demo-data.sql` | Removes every demo record and anything pointing at one; safe to run twice |
+
+Tests (`supabase/tests/*.test.sql`, pgTAP syntax) sign in as different users by setting JWT claims, then check what each can read, write and call: 69 assertions covering anonymous access, pending, verified, suspended and deactivated members, council and platform admins, role escalation, self-approval, youth roles, the guardian table, the audit log and the contact form.
+
+- With the Supabase CLI and Docker: `npx supabase start`, then `npx supabase test db`.
+- With any PostgreSQL 15+ server, no Docker: `npm run test:db` (set `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`). It creates a throwaway database, adds a small stand-in for Supabase's `auth` schema and roles (`supabase/tests/local/`), applies the migrations and seed, runs every test file, then checks the demo-removal script. CI runs this on every push.
+
+`src/types/database.ts` describes the tables and functions the browser uses. With the CLI, `npx supabase gen types typescript --local` regenerates the full set.

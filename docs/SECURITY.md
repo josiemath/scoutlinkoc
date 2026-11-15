@@ -2,13 +2,18 @@
 
 ScoutLink OC is treated as a potentially youth-facing platform. The rules here are requirements, not preferences.
 
-## Current state (Milestone 1)
+## Current state (Milestone 2)
 
-- Public, informational site only. No accounts, no database, no member data.
-- Sign-in, sign-up, password and contact forms validate input but **send nothing**; each shows a notice that accounts and messages aren't open.
-- Every page states that the site is an independent demonstration and not an official GSOC service.
-- A Content-Security-Policy is injected into production builds: scripts only from this origin plus one hashed inline script, fonts and images from this origin, network requests only to this origin and the configured Supabase project, no plugins, no `<base>` hijacking.
-- ESLint bans `dangerouslySetInnerHTML`; all user-visible text is rendered as text.
+- **Accounts exist, but only for adults, and they start with no access.** Signing up creates a `pending_verification` profile that can read only its own row. Onboarding records a *request*; an administrator must approve it before the account is active, and approval grants exactly the role and troop or service unit requested.
+- **Roles come only from `role_assignments`,** which has no write grants. Administrators change it through audited functions that block self-promotion, self-approval, council admins creating admins, and youth roles while youth access is off.
+- **Suspension and deactivation take effect immediately** because every policy checks `account_state` through `private.is_active()`.
+- **Sign-in** uses Supabase Auth with email and password, PKCE, required email confirmation and a 12-character minimum. Error messages don't reveal whether an email has an account (sign-up and password reset show the same response either way).
+- **Changing a password while signed in** requires the current password. The reset page only accepts a session that came from a reset email.
+- **The contact form** stores messages through one function with validation, a honeypot and rate limits. Nobody but admins can read them.
+- **Without a Supabase project** (for example the current GitHub Pages build), the forms say accounts aren't open and send nothing.
+- Every page states that the site is an independent demonstration, not an official GSOC service. Demo service units and troops are labelled "fictional demo" and removable.
+- A Content-Security-Policy is injected into production builds: scripts only from this origin plus one hashed inline script, network requests only to this origin and the configured Supabase project.
+- ESLint bans `dangerouslySetInnerHTML`; all user-entered text is rendered as text.
 
 ## Authorization boundaries
 
@@ -18,7 +23,7 @@ ScoutLink OC is treated as a potentially youth-facing platform. The rules here a
 | What you can reach | Row Level Security on every exposed table, default deny |
 | What you can change | Column-level grants, RLS `with check`, state-transition triggers |
 | Privileged actions (roles, verification, approvals, registration, exports) | `security definer` functions and Edge Functions that re-check the caller's verified, scoped roles |
-| What the screen shows | Route guards and permission helpers in `src/lib/permissions.ts`, for UX only |
+| What the screen shows | `AppLayout` route access (`member`, `editable`, `admin`) and `isAdmin()` in `src/lib/account.ts`, for UX only |
 
 A hidden link or route guard is never treated as access control. Every admin route's data comes from functions that check scope server-side.
 
@@ -94,29 +99,37 @@ Permanent rules: no public roster of minors; no unrestricted one-to-one adult–
 
 | Threat | Mitigation | Milestone / test |
 | --- | --- | --- |
-| Unverified users impersonating leaders | Roles only from admin-written `role_assignments`; onboarding choices are requests; `account_state` gate in every policy | M2; RLS tests: pending user can't read private data |
+| Unverified users impersonating leaders | Roles only from admin-written `role_assignments`; onboarding choices are requests; `account_state` gate in every policy | M2 ✅ `identity.test.sql`: pending users read nothing but their own records; requesting grants nothing |
 | Cross-troop data access | Scoped helper functions in every policy; private details in separate tables; UUIDs plus RLS so changing IDs returns nothing | M3; tests change IDs and expect empty results |
 | Unauthorized event registration | `register_for_event` RPC only; checks role, eligibility, window, guardian permission, duplicates; no direct insert grant | M5; concurrent registration and bypass tests |
 | Private calendar exposure | Calendar queries hit RLS-filtered tables; private events never returned in counts, searches, notifications or ICS feeds | M5; enumeration tests |
 | Unsafe messages | Adult-only conversations opened by accepted requests; block and report; plain-text rendering; length limits; rate limits | M4 |
 | Malicious uploads | Private bucket; MIME allow-list and size limits in storage policies; signed URLs; files never rendered inline as HTML | M6 |
-| Admin privilege escalation | No user write path to `role_assignments`; `grant_role` checks the granter's scope; council admins can't create platform admins; every change audited | M2/M7; escalation tests |
+| Admin privilege escalation | No user write path to `role_assignments`; `grant_role_checked` checks the granter; council admins can't create admins; nobody changes their own roles or approves their own request; every change audited | M2 ✅ escalation tests; M7 admin UI |
 | Youth privacy risks | Youth features disabled; no rosters or full names; prerequisites above | All |
-| Abusive automated registrations and requests | Rate limits in RPCs and Edge Functions; honeypot on public forms; unique constraints | M2–M5 |
+| Abusive automated registrations and requests | Supabase Auth rate limits; rate limits in RPCs (onboarding 5/day, contact form per email, per address and overall); honeypot; one pending request per person | M2 ✅ `contact.test.sql`; later milestones add more |
 | Cross-site scripting | No raw HTML rendering (lint-enforced); CSP with hashed inline script; Zod validation | M1 ✅ |
 | Clickjacking | GitHub Pages can't send `frame-ancestors` (it isn't allowed in a `<meta>` CSP). Mitigation for an official deployment: serve through a host or proxy that sets `Content-Security-Policy: frame-ancestors 'none'` | Before real pilot |
 
 ## Known limitations
 
+- **Sessions are stored in the browser's `localStorage`** (Supabase's default), so a script injected into the page could read them. The strict CSP and the ban on raw HTML are the defense. Signing out, or "Sign out of all devices" in Settings, revokes refresh tokens.
+- **Email links must be opened in the same browser** that asked for them (PKCE keeps a one-time verifier there). Other browsers get a clear "request a new link" message.
+- **Supabase's built-in email service only delivers to members of the Supabase organization's team, about 2 emails an hour.** Real volunteers can't sign up until custom SMTP is configured (see [DEPLOYMENT.md](DEPLOYMENT.md)).
+- **Account deletion is a request.** An administrator completes it by deleting the user in Supabase → Authentication → Users, which removes the profile, roles, requests and affiliations (cascade). Audit log entries keep the user id only.
+- **The contact form's per-address limit** uses the first `X-Forwarded-For` value, which a client can influence. The per-email and overall limits still apply; add CAPTCHA (Supabase Auth supports hCaptcha and Turnstile) before a public launch.
+- **No admin screen yet** for roles, account states, contact messages or the audit log. The database functions exist and are tested; Milestone 7 adds the screens. Until then, admins use the verification queue and the Supabase dashboard.
+- **No multi-factor authentication yet.** Recommended for administrators before real data (Supabase Auth supports TOTP).
 - `style-src 'unsafe-inline'` is required because Radix UI and Sonner position overlays with inline `style` attributes. Scripts remain hash-restricted.
-- A moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) affects ESLint's dev-only tooling, not anything shipped to browsers; npm's automatic fix would downgrade the accessibility lint plugin. CI audits production dependencies (`npm audit --omit=dev --audit-level=high`), which report 0 vulnerabilities. Dependabot will pick up the upstream fix.
+- A moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) affects ESLint's dev-only tooling, not anything shipped to browsers. CI audits production dependencies (`npm audit --omit=dev --audit-level=high`).
 
 ## Production security review checklist
 
 - [ ] Council authorization recorded (`VITE_GSOC_AUTHORIZATION_REF`)
 - [ ] Only the publishable key in GitHub variables; secret keys only in Edge Function secrets
 - [ ] RLS enabled on every table; `supabase test db` passes; Supabase security advisor shows no warnings
-- [ ] Auth: email confirmation on, leaked-password protection on, redirect URLs limited to the real site
+- [ ] Auth: email confirmation on, secure password change on, leaked-password protection on, redirect URLs limited to the real site, custom SMTP configured
+- [ ] MFA required for platform and council administrators
 - [ ] Storage buckets private; upload limits set
 - [ ] Rate limits configured; CAPTCHA considered for sign-up
 - [ ] Audit logs reviewed; retention policy set

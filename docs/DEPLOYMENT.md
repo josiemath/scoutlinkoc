@@ -1,159 +1,160 @@
 # Deployment guide
 
-Beginner-friendly steps to run ScoutLink OC on your computer and publish it with GitHub Pages. Steps 3–6 are only needed from Milestone 2 onward, when the database is added.
+Step-by-step instructions to run ScoutLink OC on your computer and publish it on GitHub Pages with a Supabase project behind it. No step needs the command line unless it says so.
 
 You'll need:
 
-- **Node.js** (current LTS release) from [nodejs.org](https://nodejs.org). Check with `node -v`; it must be 22.22 or newer.
-- **Git**, or **GitHub Desktop** if you'd rather not use the command line.
-- A free **GitHub** account (and, from Milestone 2, a free **Supabase** account).
+- A free **GitHub** account and a free **Supabase** account ([supabase.com](https://supabase.com)).
+- For building on your own computer (optional): **Node.js** LTS from [nodejs.org](https://nodejs.org), version 22.22 or newer (`node -v`).
 
-## 1. Create or reuse a GitHub repository
+There are two halves: the **database and accounts** live in Supabase, and the **website** is static files on GitHub Pages. The website only knows two public values about Supabase: the project URL and the publishable key.
 
-- **New repository:** github.com/new → choose a name (for example `scoutlink-oc`) → Public → don't add a README → Create.
-- **Reusing an existing repository** that holds an older version of the site: that's fine. You'll replace its files in step 8.
+## 1. Create the Supabase project
 
-The site address will be `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/`. The repository name is read automatically at build time; nothing is hardcoded.
+1. Sign in at [supabase.com](https://supabase.com) → **New project**. Pick a strong database password (store it in a password manager) and a US West region.
+2. Wait for the project to finish setting up (a minute or two).
 
-## 2. Install dependencies
+## 2. Set up the database (SQL editor, no command line)
 
-Unzip the project, open a terminal in the project folder, and run:
+1. In the project, open **SQL Editor** → **New query**.
+2. Open `supabase/setup.sql` from this project, copy **all** of it, paste it into the editor, and click **Run**. It should finish with "Success. No rows returned".
+   - `setup.sql` is every file in `supabase/migrations/` in order. Run it **once**, on a new project. Running it a second time stops with an "already exists" error before it changes any data.
+3. Optional, for a demonstration: open another new query, paste `supabase/seed.sql`, and run it. It adds three fictional service units and four fictional troops, all labelled "fictional demo". Without them nobody can complete onboarding, because a request must name a service unit.
+4. Check it worked: **Table Editor** should list `profiles`, `role_assignments`, `troops` and the others, each showing RLS enabled. **Advisors → Security Advisor** should show no errors for these tables.
 
-```bash
-npm ci
-```
+To remove the demo records later, run `supabase/scripts/remove-demo-data.sql` the same way.
 
-`npm ci` installs the exact versions in `package-lock.json`. Don't commit the `node_modules` folder it creates (it's already in `.gitignore`).
+**With the Supabase CLI instead** (developers): `npx supabase link --project-ref YOUR-REF`, then `npx supabase db push`. Don't do both.
 
-## 3. Create a Supabase project (Milestone 2+)
+## 3. Configure sign-in
 
-1. Sign in at [supabase.com](https://supabase.com) → **New project**. Choose a strong database password and a US West region.
-2. Open **Project Settings → API Keys**. Copy the **Project URL** and the **publishable** key (`sb_publishable_…`).
-3. **Never copy the secret / service_role key into this project's environment files or GitHub variables.** The build refuses to run if you do.
+In Supabase → **Authentication**:
 
-## 4. Run database migrations (Milestone 2+)
+**URL Configuration**
 
-```bash
-npx supabase login
-npx supabase link --project-ref YOUR-PROJECT-REF
-npx supabase db push        # applies supabase/migrations
-npx supabase test db        # runs the Row Level Security tests
-```
-
-## 5. Configure authentication (Milestone 2+)
-
-In Supabase → **Authentication → URL Configuration**:
-
-- **Site URL:** `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/`
-- **Redirect URLs:** add both
+- **Site URL:** `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/` (for example `https://josiemath.github.io/scoutlinkoc/`). Include the trailing slash.
+- **Redirect URLs:** add
   - `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/**`
-  - `http://localhost:5173/**`
+  - `http://localhost:5173/**` (only if you'll run it on your computer)
 
-In **Authentication → Providers → Email**: keep **Confirm email** on. In **Authentication → Attack Protection**: turn on leaked-password protection if your plan offers it.
+Email links come back to `…/REPOSITORY-NAME/?next=/onboarding&code=…`. If the address isn't allowed here, Supabase sends people to the Site URL instead and they won't be signed in.
 
-## 6. Set environment variables
+**Sign In / Providers → Email**
 
-**Local development:** copy `.env.example` to `.env.local` and fill in:
+- **Confirm email:** on.
+- **Secure email change** and **Secure password change:** on.
+- **Minimum password length:** 12 (the app asks for 12 too).
 
-```bash
-VITE_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-VITE_BASE_PATH=/
-```
+**Attack Protection:** turn on leaked-password protection if your plan offers it. Consider CAPTCHA before a public launch.
 
-`.env.local` is ignored by Git. Never commit it.
+**Emails → SMTP Settings: required before real people sign up.** Supabase's built-in email service only sends to people on your Supabase organization's team, about 2 emails an hour. Anyone else trying to sign up sees "This site can't email that address yet". For testing, add yourself (and testers) under **Organization settings → Team**. For real use, connect an email provider (Resend, Postmark, Amazon SES, Brevo and others work) and then raise the limit under **Rate Limits**.
 
-**GitHub (for the deployed site):** repository **Settings → Secrets and variables → Actions → Variables tab → New repository variable**:
+## 4. Copy the two public values
+
+**Project Settings → API Keys**:
+
+- **Project URL**: `https://YOUR-PROJECT-REF.supabase.co`
+- **Publishable key**: starts with `sb_publishable_`
+
+These two are designed to be public: they end up in the website's JavaScript, and Row Level Security in the database protects the data.
+
+**Never use the secret key (`sb_secret_…`) or the `service_role` key in this project.** Not in `.env.local`, not in GitHub variables, not in a chat. The build stops with `UnsafeConfigurationError` if it finds one. If one is ever exposed, rotate it in Supabase immediately.
+
+## 5. Build the website with those values
+
+The values are compiled into the site when it's built, so changing them means rebuilding. Pick one way:
+
+**A. GitHub Actions (when Actions can run on your account).** Repository **Settings → Secrets and variables → Actions → Variables → New repository variable**:
 
 | Name | Value |
 | --- | --- |
 | `VITE_SUPABASE_URL` | your project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | your publishable key |
 
-You don't set `VITE_BASE_PATH` on GitHub; the deploy workflow works it out from the repository name.
+Then set **Settings → Pages → Source: GitHub Actions** and push to `main`, or run the "Deploy to GitHub Pages" workflow by hand. `VITE_BASE_PATH` is worked out from the repository name.
 
-## 7. Run locally
+**B. Build on your computer.** Copy `.env.example` to `.env.local` and fill it in:
 
 ```bash
-npm run dev            # http://localhost:5173
-npm run check          # type check, lint, unit tests and production build
+VITE_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+VITE_BASE_PATH=/REPOSITORY-NAME/
+```
+
+Then, in the project folder:
+
+```bash
+npm ci
+npm run build
+```
+
+The finished site is in `dist/`. `.env.local` is ignored by Git; never commit it.
+
+**C. Prebuilt files on the `gh-pages` branch (when Actions can't run).** Build as in B (or have someone build it for you with your URL and publishable key), then upload the **contents** of `dist/` to the `gh-pages` branch: open `https://github.com/YOUR-USERNAME/REPOSITORY-NAME/upload/gh-pages`, drag in everything inside `dist`, and commit. GitHub's web uploader skips files whose names start with a dot; the site doesn't need any. Pages must be set to **Deploy from a branch → gh-pages → / (root)**.
+
+## 6. Create the first administrator
+
+1. On the live site, **Request access** with your own email (it must be on your Supabase team until custom SMTP is set up).
+2. Open the confirmation email **in the same browser** and click the link. You land on onboarding, signed in. You don't need to send a request.
+3. In Supabase **SQL Editor**, run (with your email):
+
+   ```sql
+   select private.bootstrap_platform_admin('you@example.org');
+   ```
+
+   This makes you platform and council administrator and activates your account. It only works once; after that, administrators grant roles to each other in the app.
+4. Reload the site. The dashboard shows your roles, and **Verification requests** appears in the menu.
+
+## 7. Test the live site
+
+1. In a private window, sign up as a second tester (on your Supabase team), confirm the email, and send a verification request for a demo troop.
+2. As the administrator, open **Verification requests**, check the details, and **Approve**. The tester's dashboard now says "You're verified".
+3. As the tester, **Sign out**, use **Forgot password**, open the email link in the same browser, choose a new password, and sign in with it.
+4. Send a message through **Contact**. It's stored in the `contact_messages` table (Table Editor), readable only by administrators.
+
+## 8. Run it on your computer (developers)
+
+```bash
+npm ci
+npm run dev            # http://localhost:5173 (uses .env.local; set VITE_BASE_PATH=/)
+npm run check          # type check, lint, unit tests, production build
 npx playwright install chromium   # first time only
-npm run test:e2e       # end-to-end and accessibility tests
+npm run test:e2e       # end-to-end and accessibility tests (two builds, one with a mock Supabase)
+npm run test:db        # database tests against any PostgreSQL 15+ server (PGHOST, PGUSER, PGPASSWORD)
 ```
 
-To preview exactly what GitHub Pages will serve:
+With Docker and the Supabase CLI you can run a full local stack instead: `npx supabase start` (uses `supabase/config.toml`, applies migrations and seed), then `npx supabase test db`.
 
-```bash
-# macOS / Linux
-VITE_BASE_PATH=/REPOSITORY-NAME/ npm run build && VITE_BASE_PATH=/REPOSITORY-NAME/ npm run preview
-# Windows PowerShell
-$env:VITE_BASE_PATH="/REPOSITORY-NAME/"; npm run build; npm run preview
-```
+After changing anything in `supabase/migrations/`, run `npm run db:bundle` to regenerate `supabase/setup.sql`.
 
-Then open `http://localhost:4173/REPOSITORY-NAME/`.
-
-## 8. Push the code to GitHub
-
-The project has folders (`src`, `docs`, `.github`, …) that must keep their structure. GitHub's "Upload files" page flattens folders if you select files instead of folders, which breaks the site, so use one of these:
-
-**Option A: GitHub Desktop (easiest)**
-
-1. GitHub Desktop → **File → Clone repository** → pick your repository → Clone.
-2. Open the cloned folder. If it contains files from an older version of the site, delete them (keep the hidden `.git` folder).
-3. Copy **everything** from the unzipped project into that folder, including `.github`, `.gitignore`, `.env.example` and `.nvmrc`. Don't copy `node_modules` or `dist` if you have them.
-4. Back in GitHub Desktop, write a summary like "ScoutLink OC Milestone 1" → **Commit to main** → **Push origin**.
-
-**Option B: command line**
-
-```bash
-git init -b main          # skip if the folder is already a Git repository
-git add .
-git commit -m "ScoutLink OC Milestone 1"
-git remote add origin https://github.com/YOUR-USERNAME/REPOSITORY-NAME.git
-git push -u origin main   # add --force only if you intend to replace an older site's history
-```
-
-**Option C: web upload.** On the repository page → **Add file → Upload files**, then drag the **folders and files** from the unzipped project (drag the `src` folder itself, not the files inside it). On a Mac, press Cmd+Shift+. in Finder to show the hidden `.github` folder first. Delete any leftover files from an older version of the site.
-
-## 9. Turn on GitHub Pages
-
-Repository **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-
-If it currently says "Deploy from a branch", switch it. Otherwise GitHub serves the raw source files instead of the built site.
-
-## 10. Open the published site
-
-1. Open the **Actions** tab. The "Deploy to GitHub Pages" workflow runs on every push to `main` (about 2 minutes). You can also start it by hand with **Run workflow**.
-2. When it shows a green check, open `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/`.
-3. If you see an old version, do a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R on a Mac). GitHub Pages lets browsers cache pages for about 10 minutes.
-
-## 11. Test production authentication (Milestone 2+)
-
-1. On the live site, **Request access** with a real email address you control.
-2. Open the confirmation email; the link should return you to the live site, signed in, with "Pending verification".
-3. **Sign out**, use **Forgot password**, follow the email link, set a new password, and sign in with it.
-4. If links bounce to `localhost` or show "redirect URL not allowed", recheck step 5.
-
-## 12. Debugging common failures
+## 9. Debugging common problems
 
 | Symptom | Likely cause and fix |
 | --- | --- |
-| Site shows unstyled text or a list of files | Pages source is still "Deploy from a branch". Set it to **GitHub Actions** (step 9) and re-run the workflow. |
-| Blank page; browser console shows 404s for `/assets/…` | Built with the wrong base path. Let the workflow set it, or build locally with `VITE_BASE_PATH=/REPOSITORY-NAME/`. If you renamed the repository, re-run the workflow. |
-| Workflow fails at `npm ci` | `package-lock.json` wasn't uploaded. Commit it. |
-| Workflow fails at "Configure GitHub Pages" or "Deploy" | Pages isn't enabled with the GitHub Actions source, or the `github-pages` environment blocks the `main` branch (Settings → Environments). |
-| Build fails with `UnsafeConfigurationError` | A Supabase secret or service_role key is in a `VITE_` variable. Remove it, rotate the key in Supabase, and use the publishable key. |
-| Type check or lint fails in Actions but not locally | Run `npm run check` locally on the same commit; make sure you're on the Node LTS. |
-| Typing `/REPOSITORY-NAME/about` shows a redirect, then the page | Expected. Routes use `#/about`; the generated `404.html` forwards path-style links. |
-| Old content after a successful deploy | Browser cache; hard refresh or open a private window. |
+| Sign-up says "This site can't email that address yet" | Supabase's built-in email only reaches your organization's team. Add the address to the team, or set up custom SMTP (step 3). |
+| "Too many emails were sent recently" | The built-in email allows about 2 per hour for the whole project. Wait, or set up custom SMTP. |
+| The email link opens the site but you aren't signed in | The redirect URL isn't allowed (step 3), or the link was opened in a different browser or app. Request a new link and open it in the browser you used. |
+| "That link didn't work … expired or already used" | Links work once and expire after an hour. Some email scanners open links first; request a new one. |
+| Sign-in page says "Accounts aren't open yet" | The site was built without `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Rebuild with them (step 5). |
+| "Couldn't load your account" after signing in | The database setup didn't run. Check that the Table Editor lists `profiles`; if not, run `setup.sql` (step 2). |
+| Onboarding says "No service units are set up yet" | Run `seed.sql` for demo data, or add real service units in the Table Editor (Milestone 7 adds a screen for this). |
+| Build fails with `UnsafeConfigurationError` | A secret or `service_role` key is in a `VITE_` variable. Remove it, rotate it in Supabase, use the publishable key. |
+| Blank page; console shows 404s for `/assets/…` | Built with the wrong base path. Set `VITE_BASE_PATH=/REPOSITORY-NAME/` and rebuild. |
+| Site shows a list of files or unstyled text | Pages is serving the source code. Use **GitHub Actions** as the source (5A), or upload the built `dist` contents to `gh-pages` (5C). |
+| Workflow fails with a billing or account lock message | GitHub won't run Actions on the account until billing is fixed. Use 5C meanwhile. |
+| Old content after publishing | Browser cache. Hard refresh (Ctrl+Shift+R, or Cmd+Shift+R on a Mac). |
+
+## Completing a deletion request
+
+When someone asks to delete their account, it's deactivated right away and `deletion_requested_at` is set on their profile. To finish: Supabase → **Authentication → Users** → find the person → **Delete user**. Their profile, roles, requests and affiliations are removed with it.
 
 ## Custom domain (later)
 
-1. Repository **Settings → Pages → Custom domain**, enter your domain (for example `scoutlink.example.org`), and follow GitHub's DNS instructions. Turn on **Enforce HTTPS** once the certificate is ready.
-2. Add a repository variable `CUSTOM_DOMAIN` with the same domain. The workflow then builds with base path `/`.
-3. Update the Supabase Site URL and redirect URLs to the new domain.
-4. A custom domain behind a proxy or CDN also lets you send security headers that GitHub Pages can't, such as `frame-ancestors` (see [SECURITY.md](SECURITY.md)).
+1. Repository **Settings → Pages → Custom domain**, follow GitHub's DNS steps, then turn on **Enforce HTTPS**.
+2. Add a repository variable `CUSTOM_DOMAIN` with the domain, so the build uses base path `/`.
+3. Change the Supabase Site URL and redirect URLs to the new domain.
+4. A host or proxy in front of the site can also send security headers GitHub Pages can't, such as `frame-ancestors` (see [SECURITY.md](SECURITY.md)).
 
 ## Removing the independence notice
 
-Only after Girl Scouts of Orange County authorizes an official deployment in writing, add a repository variable `VITE_GSOC_AUTHORIZATION_REF` with the authorization reference. The demonstration notice is then replaced by that reference.
+Only after Girl Scouts of Orange County authorizes an official deployment in writing, set `VITE_GSOC_AUTHORIZATION_REF` to the authorization reference and rebuild.

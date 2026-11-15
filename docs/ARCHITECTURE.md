@@ -34,6 +34,16 @@ flowchart LR
 6. **Static hosting friendly.** `HashRouter` (`/#/route`) keeps deep links and reloads working on GitHub Pages; the base path comes from the repository name at build time.
 7. **Youth safety by default.** Youth accounts, youth messaging and real data stay disabled until the council approves the required procedures (see [SECURITY.md](SECURITY.md)).
 
+### Authentication flow (Milestone 2)
+
+1. **Sign-up** calls `supabase.auth.signUp` with `emailRedirectTo = https://site/BASE/?next=/onboarding`. A trigger creates a `pending_verification` profile.
+2. **Email link:** Supabase verifies the token and redirects to `…/BASE/?next=/onboarding&code=…` (PKCE). Before the router starts, `captureAuthRedirect()` moves `code` and `next` out of the address bar and routes to `#/auth/callback`, which calls `exchangeCodeForSession` once and continues to `next`. `next` must be an in-app path; anything else falls back to the dashboard.
+3. **Session:** `AuthProvider` subscribes to `onAuthStateChange` and exposes `status` (`unconfigured`, `loading`, `signed_out`, `signed_in`). When the user changes, cached account data is dropped before anything renders. An unexpected sign-out (expired or revoked session) shows a notice and sends the person to sign in with `next` set.
+4. **Account:** `AppLayout` loads `get_my_account()` and decides what to show: pending accounts see their status and onboarding, suspended or deactivated accounts only their status and settings, admins also the verification queue. The database enforces the same rules.
+5. **Password reset** follows the same link flow; the reset form only appears for a session that came from a reset email (`PASSWORD_RECOVERY`). Signed-in password changes re-check the current password first.
+
+The Supabase client is loaded on first use, so public pages don't download it.
+
 ### Request flow example: registering for an event (Milestone 5)
 
 1. The page calls the `register_for_event(event_id, participant_ids)` RPC with the user's JWT.
@@ -47,10 +57,10 @@ flowchart LR
 | Routing | `src/app/` | Route table (`routes.tsx`, lazy-loaded pages), providers |
 | Pages | `src/pages/` | One component per route; compose components and hooks |
 | Components | `src/components/` | `ui/` primitives (shadcn/ui pattern on Radix), `layout/`, and feature folders |
-| Hooks | `src/hooks/` | Reusable React hooks (`useTheme`, `usePageMeta`, query hooks later) |
-| Services | `src/services/` | Typed Supabase queries and RPC calls (Milestone 2+) |
-| Library | `src/lib/` | Pure helpers: config, validation schemas, dates, permissions (UX mirror of database rules) |
-| Contexts | `src/contexts/` | Theme now; session/auth in Milestone 2 |
+| Hooks | `src/hooks/` | `useAuth`, `useAccount` (TanStack Query), `useAppAccount`, `useTheme`, `usePageMeta`, `useFocusOnChange` |
+| Data access | `src/lib/supabase.ts`, `auth.ts`, `account.ts` | Lazily loaded Supabase client; typed Auth calls and RPC wrappers that throw coded errors |
+| Library | `src/lib/` | Config, validation schemas, error messages, redirect safety, dates |
+| Contexts | `src/contexts/` | Theme; session (`AuthProvider`) |
 | Tests | `src/tests/`, `build/*.test.ts`, `e2e/` | Vitest unit/integration tests, Playwright end-to-end tests |
 
 ### Folder structure (finalized plan)
@@ -67,8 +77,9 @@ scoutlink-oc/
 ├── build/
 │   ├── html-plugins.ts                ✅ CSP meta tag, GitHub Pages 404 redirect
 │   └── html-plugins.test.ts           ✅
-├── docs/                              ✅ ARCHITECTURE, DATABASE, SECURITY, DEPLOYMENT (+ USER_GUIDE in M2)
-├── e2e/                               ✅ Playwright: public site, accessibility
+├── docs/                              ✅ ARCHITECTURE, DATABASE, SECURITY, DEPLOYMENT, USER_GUIDE
+├── e2e/                               ✅ Playwright: public site, accessibility, accounts (mock Supabase)
+├── scripts/bundle-sql.mjs             ✅ builds supabase/setup.sql
 ├── public/favicon.svg                 ✅
 ├── src/
 │   ├── app/                           ✅ routes, providers
@@ -82,29 +93,31 @@ scoutlink-oc/
 │   │   ├── events/ calendar/          M5
 │   │   ├── projects/                  M6
 │   │   └── admin/                     M7
-│   ├── contexts/                      ✅ theme · M2 auth/session
+│   ├── contexts/                      ✅ theme, auth/session
 │   ├── hooks/                         ✅
 │   ├── lib/
 │   │   ├── base-path.ts config-schema.ts env.ts   ✅
 │   │   ├── validation.ts date.ts focus.ts site.ts ✅
-│   │   ├── supabase.ts auth.ts permissions.ts     M2
+│   │   ├── supabase.ts auth.ts auth-redirect.ts   ✅ M2
+│   │   ├── account.ts errors.ts                   ✅ M2
 │   ├── pages/
 │   │   ├── public/ auth/              ✅
-│   │   ├── dashboard/ account/        M2
+│   │   ├── app/                       ✅ M2 dashboard, onboarding, profile, settings
 │   │   ├── explore/                   M3
 │   │   ├── messages/ collaborations/  M4
 │   │   ├── events/ calendar/          M5
 │   │   ├── projects/                  M6
-│   │   └── admin/                     M7
-│   ├── services/                      M2+
-│   ├── types/database.ts              M2 (generated with `supabase gen types`)
+│   │   └── admin/                     ✅ M2 verification queue · M7 the rest
+│   ├── types/database.ts              ✅ M2 (matches the migrations)
 │   └── tests/                         ✅
 ├── supabase/
-│   ├── config.toml                    M2
-│   ├── migrations/                    M2+ (one migration per milestone feature set)
-│   ├── functions/                     M2+ (Edge Functions)
-│   ├── tests/                         M2+ (SQL/pgTAP RLS tests)
-│   └── seed.sql                       M3 (fictional, removable demo data)
+│   ├── config.toml                    ✅ local CLI settings
+│   ├── migrations/                    ✅ M2 foundation, identity, identity functions
+│   ├── setup.sql                      ✅ all migrations in one file for the SQL editor
+│   ├── functions/                     later (Edge Functions)
+│   ├── tests/                         ✅ pgTAP suites + local runner
+│   ├── scripts/remove-demo-data.sql   ✅
+│   └── seed.sql                       ✅ fictional, removable demo data
 ├── .env.example  .gitignore  .nvmrc  components.json
 ├── eslint.config.js  playwright.config.ts  vite.config.ts  vitest.config.ts
 ├── tsconfig.json  tsconfig.app.json  tsconfig.node.json
@@ -133,7 +146,7 @@ There is no `tailwind.config.ts`: Tailwind CSS v4 is configured in CSS (`src/ind
 | # | Milestone | Deliverables | Done when |
 | --- | --- | --- | --- |
 | 1 | **Foundation** ✅ | Vite/React/TS, Tailwind tokens (light/dark), UI components, header/mobile nav/footer, all public pages, HashRouter, CSP, Pages 404 redirect, CI + deploy workflows, docs | Typecheck, lint, unit, e2e and build pass; deploys to Pages |
-| 2 | Database and authentication | Supabase project setup, migrations for identity tables (`profiles`, `role_assignments`, affiliations, `verification_requests`, `audit_logs`, `contact_messages`), RLS + tests, Supabase client, sign-up/sign-in/out, email confirmation, password reset, session persistence, onboarding, account states, protected routes, account status page, deactivation and deletion requests | Auth flows work against a real project; unverified users can reach only their own status; RLS tests reject cross-user access |
+| 2 | **Database and authentication** ✅ | Supabase project setup, migrations for identity tables (`profiles`, `role_assignments`, affiliations, `verification_requests`, `audit_logs`, `contact_messages`), RLS + tests, Supabase client, sign-up/sign-in/out, email confirmation, password reset, session persistence, onboarding, account states, protected routes, account status page, deactivation and deletion requests | Auth flows work against a real project; unverified users can reach only their own status; RLS tests reject cross-user access |
 | 3 | Troop and service unit directory | Directory tables/views exposing only shareable fields, aggregate counts, search/filter/sort with bounded pagination, troop and service unit profiles with tabs, fictional seed data with removal script | Filters work server-side; private fields are unreachable by changing IDs |
 | 4 | Adult networking | Contact requests (create, accept, decline, report) with rate limits, conversations and messages with participant-only RLS, unread counts, archive, block, notifications center | E2E: request → accept → conversation; non-participants can't read messages |
 | 5 | Events and calendars | Event CRUD, approval states, visibility levels, atomic registration and waitlist RPCs, guardian permission model (disabled for youth), organizer dashboard, exports, month/week/list calendars, ICS export where authorized | Capacity can't be exceeded under concurrent requests; private events never appear in others' queries |
