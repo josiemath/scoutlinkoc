@@ -1,12 +1,18 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { MailIcon } from "lucide-react";
+import { MailCheckIcon, MailIcon } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { FormAlert } from "@/components/auth/AuthShell";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/misc";
+import { useAuth } from "@/hooks/use-auth";
+import { useFocusOnChange, type FormError } from "@/hooks/use-focus-on-change";
 import { usePageMeta } from "@/hooks/use-page-meta";
+import { sendContactMessage } from "@/lib/account";
+import { friendlyError } from "@/lib/errors";
 import { focusById } from "@/lib/focus";
 import { CONTACT_TOPICS, contactSchema, type ContactValues } from "@/lib/validation";
 
@@ -18,9 +24,25 @@ export default function ContactPage() {
     defaultValues: { name: "", email: "", topic: "", message: "", website: "" }
   });
 
-  // Messages can't be delivered until the project database is connected, so a
-  // valid submission points the visitor to the notice instead of pretending to send.
-  const onValid = () => focusById("contact-closed-notice");
+  const { status } = useAuth();
+  const [sent, setSent] = useState<object | null>(null);
+  useFocusOnChange("contact-sent", sent);
+  const [formError, setFormError] = useState<FormError | null>(null);
+  useFocusOnChange("contact-error", formError);
+
+  // Without a database, a valid submission points to the notice instead of pretending to send.
+  const onValid = async (values: ContactValues) => {
+    if (status === "unconfigured") return focusById("contact-closed-notice");
+    setFormError(null);
+    try {
+      await sendContactMessage(values);
+      setSent({});
+      form.reset();
+    } catch (error) {
+      setFormError({ text: friendlyError(error) });
+    }
+  };
+  const submitting = form.formState.isSubmitting;
 
   return (
     <>
@@ -50,13 +72,29 @@ export default function ContactPage() {
         </div>
 
         <div className="rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          <Alert variant="warning" id="contact-closed-notice" tabIndex={-1} className="mb-6 outline-none">
-            <MailIcon aria-hidden="true" />
-            <AlertTitle>Messages can't be sent yet</AlertTitle>
-            <AlertDescription>
-              <p>The form will deliver messages once the project database is connected. Nothing you type is sent or stored.</p>
-            </AlertDescription>
-          </Alert>
+          {status === "unconfigured" && (
+            <Alert variant="warning" id="contact-closed-notice" tabIndex={-1} className="mb-6 outline-none">
+              <MailIcon aria-hidden="true" />
+              <AlertTitle>Messages can't be sent yet</AlertTitle>
+              <AlertDescription>
+                <p>This copy of the site isn't connected to the project database, so nothing you type is sent or stored.</p>
+              </AlertDescription>
+            </Alert>
+          )}
+          {sent && (
+            <Alert variant="info" id="contact-sent" tabIndex={-1} className="mb-6 outline-none">
+              <MailCheckIcon aria-hidden="true" />
+              <AlertTitle>Message sent</AlertTitle>
+              <AlertDescription>
+                <p>Thanks. Your message reached the project team. If it needs a reply, they'll answer by email.</p>
+              </AlertDescription>
+            </Alert>
+          )}
+          {formError && (
+            <FormAlert id="contact-error" title="Couldn't send your message">
+              {formError.text}
+            </FormAlert>
+          )}
 
           <Form {...form}>
             <form noValidate onSubmit={form.handleSubmit(onValid)} className="grid gap-5">
@@ -125,8 +163,8 @@ export default function ContactPage() {
                 <label htmlFor="contact-website">Website</label>
                 <input id="contact-website" tabIndex={-1} autoComplete="off" {...form.register("website")} />
               </div>
-              <Button type="submit" size="lg" className="w-full sm:w-auto">
-                Check and send
+              <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={submitting}>
+                {submitting ? "Sending…" : "Send message"}
               </Button>
             </form>
           </Form>

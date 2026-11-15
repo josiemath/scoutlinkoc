@@ -2,6 +2,7 @@ import { MenuIcon } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink } from "react-router";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import { Separator } from "@/components/ui/misc";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { PRIMARY_NAV } from "@/lib/site";
@@ -23,6 +24,8 @@ const mobileLink = ({ isActive }: { isActive: boolean }) =>
 
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { status } = useAuth();
+  const signedIn = status === "signed_in";
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
@@ -45,12 +48,20 @@ export function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-1.5 lg:ml-2">
           <ThemeToggle />
-          <Button asChild variant="ghost" className="hidden sm:inline-flex">
-            <Link to="/login">Sign in</Link>
-          </Button>
-          <Button asChild className="hidden sm:inline-flex">
-            <Link to="/signup">Request access</Link>
-          </Button>
+          {signedIn ? (
+            <Button asChild className="hidden sm:inline-flex">
+              <Link to="/dashboard">Your dashboard</Link>
+            </Button>
+          ) : (
+            <>
+              <Button asChild variant="ghost" className="hidden sm:inline-flex">
+                <Link to="/login">Sign in</Link>
+              </Button>
+              <Button asChild className="hidden sm:inline-flex">
+                <Link to="/signup">Request access</Link>
+              </Button>
+            </>
+          )}
 
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             <SheetTrigger asChild>
@@ -87,16 +98,26 @@ export function SiteHeader() {
               </nav>
               <Separator className="mx-4 w-auto" />
               <div className="grid gap-2 px-4">
-                <SheetClose asChild>
-                  <Button asChild size="lg">
-                    <Link to="/signup">Request access</Link>
-                  </Button>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Button asChild size="lg" variant="outline">
-                    <Link to="/login">Sign in</Link>
-                  </Button>
-                </SheetClose>
+                {signedIn ? (
+                  <SheetClose asChild>
+                    <Button asChild size="lg">
+                      <Link to="/dashboard">Your dashboard</Link>
+                    </Button>
+                  </SheetClose>
+                ) : (
+                  <>
+                    <SheetClose asChild>
+                      <Button asChild size="lg">
+                        <Link to="/signup">Request access</Link>
+                      </Button>
+                    </SheetClose>
+                    <SheetClose asChild>
+                      <Button asChild size="lg" variant="outline">
+                        <Link to="/login">Sign in</Link>
+                      </Button>
+                    </SheetClose>
+                  </>
+                )}
               </div>
             </SheetContent>
           </Sheet>

@@ -1,5 +1,6 @@
 import { render } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter } from "react-router";
+import { RouterProvider } from "react-router/dom";
 import { AppProviders } from "@/app/AppProviders";
 import { routes } from "@/app/routes";
 
@@ -8,7 +9,7 @@ export function renderRoute(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const utils = render(
     <AppProviders>
-      <RouterProvider router={router} />
+      <RouterProvider router={router} useTransitions={false} />
     </AppProviders>
   );
   return { router, ...utils };
