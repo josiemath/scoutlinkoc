@@ -18,5 +18,5 @@
     "noUncheckedSideEffectImports": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "build", "e2e", "src/lib/base-path.ts", "src/lib/config-schema.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "build", "e2e", "scripts", "src/lib/base-path.ts", "src/lib/config-schema.ts"]
 }

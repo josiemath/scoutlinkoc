@@ -16,7 +16,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "test:db": "bash supabase/tests/local/run.sh",
+    "db:bundle": "node scripts/bundle-sql.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
