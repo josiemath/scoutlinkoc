@@ -48,7 +48,7 @@ describe("account forms", () => {
   it("contact form validates topic and message length", async () => {
     const user = userEvent.setup();
     renderRoute("/contact");
-    await user.click(await screen.findByRole("button", { name: "Check and send" }));
+    await user.click(await screen.findByRole("button", { name: "Send message" }));
     expect(await screen.findByText("Choose a topic.")).toBeInTheDocument();
     expect(screen.getByText("Add a little more detail (at least 20 characters).")).toBeInTheDocument();
     expect(screen.getByText("Messages can't be sent yet")).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { LockKeyholeIcon } from "lucide-react";
+import { CircleAlertIcon, LockKeyholeIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/misc";
@@ -45,9 +45,8 @@ export function AuthShell({ title, description, children, footer }: AuthShellPro
 }
 
 /**
- * Explains that accounts aren't open on this deployment. Shown until the
- * Supabase project and verification workflow are connected (Milestone 2), so
- * the forms never pretend to sign anyone in.
+ * Explains that accounts aren't open on this deployment. Shown when the build
+ * has no Supabase project configured, so the forms never pretend to sign anyone in.
  */
 export function AccountsClosedNotice({ id }: { id?: string }) {
   return (
@@ -56,9 +55,22 @@ export function AccountsClosedNotice({ id }: { id?: string }) {
       <AlertTitle>Accounts aren't open yet</AlertTitle>
       <AlertDescription>
         <p>
-          ScoutLink OC is still being built. Sign-in opens once the member database is connected and volunteer
-          verification is in place. Nothing you type here is sent anywhere.
+          This copy of ScoutLink OC isn't connected to a member database, so sign-in is turned off. Nothing you type
+          here is sent anywhere.
         </p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+/** A form-level error (wrong password, expired link). Receives focus so screen readers announce it. */
+export function FormAlert({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <Alert variant="destructive" id={id} tabIndex={-1} className="mb-6 outline-none">
+      <CircleAlertIcon aria-hidden="true" />
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>
+        <p>{children}</p>
       </AlertDescription>
     </Alert>
   );

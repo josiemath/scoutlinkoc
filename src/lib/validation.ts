@@ -88,8 +88,75 @@ export const contactSchema = z.object({
   website: z.string().max(0, { error: "Leave this field empty." })
 });
 
+/** Comma-separated interests, checked the same way the database checks them. */
+const interestsField = z
+  .string()
+  .max(600, { error: "That's a lot of interests. Keep it to 12 short ones." })
+  .refine((value) => splitTags(value).length <= 12, { error: "List up to 12 interests." })
+  .refine((value) => splitTags(value).every((tag) => tag.length <= 40), { error: "Keep each interest to 40 characters or fewer." });
+
+function splitTags(value: string): string[] {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+const displayNameField = z
+  .string()
+  .trim()
+  .min(2, { error: "Enter the name other volunteers know you by." })
+  .max(80, { error: "Use 80 characters or fewer." });
+
+export const ONBOARDING_ROLES = ["troop_leader", "adult_volunteer", "service_unit_coordinator"] as const;
+export const ROLES_NEEDING_TROOP: readonly string[] = ["troop_leader", "adult_volunteer"];
+
+export const onboardingSchema = z
+  .object({
+    displayName: displayNameField,
+    requestedRole: z.enum(ONBOARDING_ROLES, { error: "Choose the role you want verified." }),
+    serviceUnitId: z.string().min(1, { error: "Choose your service unit." }),
+    troopId: z.string(),
+    interests: interestsField,
+    note: z.string().trim().max(1000, { error: "Keep your note under 1,000 characters." }),
+    acceptsPolicies: z.boolean().refine((value) => value, { error: "Agree to the Terms and Privacy Policy to continue." })
+  })
+  .refine((data) => !ROLES_NEEDING_TROOP.includes(data.requestedRole) || data.troopId !== "", {
+    error: "Choose the troop you volunteer with.",
+    path: ["troopId"]
+  });
+
+export const profileSchema = z.object({
+  displayName: displayNameField,
+  generalLocation: z.string().trim().max(80, { error: "Use 80 characters or fewer." }),
+  bio: z.string().trim().max(600, { error: "Keep your bio under 600 characters." }),
+  interests: interestsField
+});
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, { error: "Enter your current password." }),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, { error: "Re-enter your new password." })
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    error: "These passwords don't match.",
+    path: ["confirmPassword"]
+  })
+  .refine((data) => data.password !== data.currentPassword, {
+    error: "Choose a password different from your current one.",
+    path: ["password"]
+  });
+
+export const decisionSchema = z.object({
+  note: z.string().trim().max(1000, { error: "Keep the note under 1,000 characters." })
+});
+
 export type LoginValues = z.infer<typeof loginSchema>;
 export type SignupValues = z.infer<typeof signupSchema>;
 export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
 export type ContactValues = z.infer<typeof contactSchema>;
+export type OnboardingValues = z.input<typeof onboardingSchema>;
+export type ProfileValues = z.infer<typeof profileSchema>;
+export type ChangePasswordValues = z.infer<typeof changePasswordSchema>;

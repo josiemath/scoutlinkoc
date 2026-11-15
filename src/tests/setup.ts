@@ -4,6 +4,7 @@ import { afterEach, beforeEach } from "vitest";
 
 // jsdom doesn't implement these browser APIs used by the theme provider, ScrollRestoration and focus helpers.
 beforeEach(() => {
+  if (typeof window === "undefined") return; // node-environment tests (build/)
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     configurable: true,
@@ -29,6 +30,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (typeof window === "undefined") return;
   cleanup();
   window.localStorage.clear();
   document.documentElement.className = "";
